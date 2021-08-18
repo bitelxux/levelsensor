@@ -17,7 +17,7 @@ long sum = 0;
 int elementCount = 0;
 float mean = 0;
 
-// Constante velocidad sonido en cm/s
+// sound speed constant in centimeters/second
 const float VelSon = 34000.0;
 
 char sBuffer[100];
@@ -67,15 +67,15 @@ void setup() {
 int ping(int TriggerPin, int EchoPin) {
    long duration, distanceCm;
    
-   digitalWrite(TriggerPin, LOW);  //para generar un pulso limpio ponemos a LOW 4us
+   digitalWrite(TriggerPin, LOW);  // generate a pulse by putting line low for 4us
    delayMicroseconds(4);
-   digitalWrite(TriggerPin, HIGH);  //generamos Trigger (disparo) de 10us
+   digitalWrite(TriggerPin, HIGH);  // trigger by putting line high for 10us
    delayMicroseconds(10);
    digitalWrite(TriggerPin, LOW);
    
-   duration = pulseIn(EchoPin, HIGH);  //medimos el tiempo entre pulsos, en microsegundos
+   duration = pulseIn(EchoPin, HIGH);  // how long did it take to go high ? (us)
    
-   //distanceCm = duration * 10 / 292/ 2;   //convertimos a distancia, en cm
+   //distanceCm = duration * 10 / 292/ 2;   // convert distance to centimeters
    distanceCm = duration * 0.000001 * VelSon / 2.0;
    return distanceCm;
 }
