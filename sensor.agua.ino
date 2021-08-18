@@ -25,8 +25,9 @@ char sBuffer[100];
 // some tank values
 
 float TANK_RADIUS = 0.6;
-float TANK_EMPTY_DISTANCE = 108;
-float TANK_FULL_DISTANCE= 21;
+float TANK_EMPTY_DISTANCE = 1.08;
+float TANK_FULL_DISTANCE= 0.21;
+float REMAINING_WATER_HEIGHT= 0.14;
 
 // pre-calculated
 float piR2=3.141516*TANK_RADIUS*TANK_RADIUS;
@@ -101,14 +102,15 @@ void loop() {
    char s[20];
   
    // mobile average
-   float d = addValue(ping(TriggerPin, EchoPin));
+   float d = addValue(ping(TriggerPin, EchoPin)); // centimeters
    float fd = d/100.0;
-   float h = max(0, (TANK_EMPTY_DISTANCE - d)/100);
+   float h = max(0, (TANK_EMPTY_DISTANCE - fd));
    float v = piR2 * h * 1000;
 
-   v += 158; // los 14 cm de agua que quedan en el fondo
-   // cuando el flotador apaga el motor
-
+   // There is some remaining water under the floating switch
+   // that is not usable because the pumb is off at this level. 
+   // Yet, it is water in the tank
+   v += piR2 * REMAINING_WATER_HEIGHT * 1000;
 
    Serial.print("d: ");
    Serial.print(dtostrf(fd, 2, 2, s));
