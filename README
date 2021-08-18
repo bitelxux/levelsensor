@@ -1,0 +1,5 @@
+# to burn the arduino
+
+amake -u nano328old sensor.agua.ino /dev/ttyUSB0
+
+
