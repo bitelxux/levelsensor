@@ -23,7 +23,7 @@ def store_reading(value):
     with open("%s/lecturas/%d" % (BASEDIR, time.time()), "w") as f:
         f.write(str(value))
 
-if __name__ == __main__:
+if __name__ == "__main__":
     counter = 0
 
     while True:
