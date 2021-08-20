@@ -103,8 +103,10 @@ void loop() {
   
    // mobile average
    float d = addValue(ping(TriggerPin, EchoPin)); // centimeters
-   float fd = d/100.0;
-   float h = max(0, (TANK_EMPTY_DISTANCE - fd));
+   float fd = d/100;
+
+   float h = max(0, TANK_EMPTY_DISTANCE - fd);
+
    float v = piR2 * h * 1000;
 
    // There is some remaining water under the floating switch
