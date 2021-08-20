@@ -43,5 +43,5 @@ if __name__ == "__main__":
                     store_reading(litres)
             os.system("touch %s/alive" % BASEDIR)
             logfile = open("/root/sensor.agua/agua.log", "aw")
-            logfile.write(line)
+            logfile.write(text)
             logfile.close()
