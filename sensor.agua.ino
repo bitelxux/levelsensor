@@ -13,6 +13,7 @@ const int windowSize = 5;
 int circularBuffer[windowSize];
 int* circularBufferAccessor = circularBuffer;
 
+long t0 = millis();
 long sum = 0;
 int elementCount = 0;
 float mean = 0;
@@ -25,9 +26,9 @@ char sBuffer[100];
 // some tank values
 
 float TANK_RADIUS = 0.6;
-float TANK_EMPTY_DISTANCE = 1.08;
+float TANK_EMPTY_DISTANCE = 1.13;
 float TANK_FULL_DISTANCE= 0.21;
-float REMAINING_WATER_HEIGHT= 0.14;
+float REMAINING_WATER_HEIGHT= 0.19;
 
 // pre-calculated
 float piR2=3.141516*TANK_RADIUS*TANK_RADIUS;
@@ -98,15 +99,14 @@ void showInfo(unsigned int distance, unsigned int litros)
   printText(0, 0, sBuffer);
 }
 
-void loop() {
+
+void read_sensor(){
    char s[20];
   
    // mobile average
    float d = addValue(ping(TriggerPin, EchoPin)); // centimeters
    float fd = d/100;
-
    float h = max(0, TANK_EMPTY_DISTANCE - fd);
-
    float v = piR2 * h * 1000;
 
    // There is some remaining water under the floating switch
@@ -121,6 +121,21 @@ void loop() {
    Serial.print(" v: ");
    Serial.println(int(v));
  
-   showInfo(d, v);
-   delay(60000UL);
+   showInfo(d, v);  
+}
+
+void loop() {
+
+
+   if (millis() - t0 >= 60000L)
+   {
+     read_sensor();
+     t0 = millis();
+   }
+
+   digitalWrite(GREEN, HIGH);
+   delay(100);
+   digitalWrite(GREEN, LOW);
+   
+   delay(2000);
 }

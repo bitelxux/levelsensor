@@ -8,6 +8,7 @@ import re
 from datetime import date, datetime
 
 BASEDIR = "/root/sensor.agua"
+MAX = 1492
 
 rParser = re.compile(r"d: (?P<distancia>.*) h: (?P<altura>.*) v: (?P<litros>\d*)")
 
@@ -36,7 +37,7 @@ if __name__ == "__main__":
             m = rParser.match(line)
             if m:
                 litres = int(m.groupdict().get('litros'))
-                if last_value and abs(last_value - litres) > 150:
+                if litres == 0 or litres > MAX and last_value and abs(last_value - litres) > 150:
                     continue  # Wrong reading for sure
                 else:
                     last_value = litres
