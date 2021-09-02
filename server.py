@@ -8,7 +8,7 @@ import re
 from datetime import date, datetime
 
 BASEDIR = "/root/sensor.agua"
-MAX = 1492
+MAX = 1300
 
 rParser = re.compile(r"d: (?P<distancia>.*) h: (?P<altura>.*) v: (?P<litros>\d*)")
 

@@ -26,7 +26,7 @@ char sBuffer[100];
 // some tank values
 
 float TANK_RADIUS = 0.6;
-float TANK_EMPTY_DISTANCE = 1.13;
+float TANK_EMPTY_DISTANCE = 1.17;
 float TANK_FULL_DISTANCE= 0.21;
 float REMAINING_WATER_HEIGHT= 0.19;
 
