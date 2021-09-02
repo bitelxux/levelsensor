@@ -6,6 +6,10 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 
+#pragma pack(push, 1)
+// without this, the struct Reading would use 8 bytes instead of 6.
+// it would pack the unsigned short in 4 bytes when it's size is 2 bytes.
+
 //Constants
 #define EEPROM_SIZE 4 * 1024 * 1024
 #define LED 2
@@ -40,15 +44,22 @@ long tBlink = millis();
 
 struct
 {
+    boolean enabled;
     unsigned long timer;
     unsigned long lastRun;
     void (*function)();
     char* functionName;
 } TIMERS[] = {
-  { 15*1000, 0, &sendStoredData, "sendStoredData" },
-  { 10*1000, 0, &readEEPROM, "readEEPROM" },
-  { 3600*1000, 0, &initNtp, "initNtp" },
+  { true, 15*1000, 0, &sendStoredData, "sendStoredData" },
+  { true, 10*1000, 0, &readEEPROM, "readEEPROM" },
+  { true, 3600*1000, 0, &initNtp, "initNtp" },
 };
+
+typedef struct
+{
+  unsigned long timestamp;
+  short int value;
+} Reading;
 
 
 void setup() {
@@ -60,6 +71,8 @@ void setup() {
 
 
 void sendStoredData(){
+
+  
   Serial.println("[SEND_STORED_DATA] Sending Stored Data");
 
   if (WiFi.status() != WL_CONNECTED){
@@ -67,14 +80,13 @@ void sendStoredData(){
     return;
   }
 
-  
+  Reading reading;  
   unsigned short int counter = readEEPROMCounter();
   unsigned short int cursor = 0;
-  unsigned long timestamp;
   int regAddress;
   short int value;
 
-  int regSize = sizeof(timestamp) + sizeof(value);
+  int regSize = sizeof(reading);
 
   char buffer[100];
   sprintf(buffer, "%d registers", counter);
@@ -82,10 +94,9 @@ void sendStoredData(){
   
   for (cursor = 0; cursor < counter; cursor++){
     regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
-    EEPROM.get(regAddress, timestamp);
-    EEPROM.get(regAddress + sizeof(timestamp), value);
+    EEPROM.get(regAddress, reading);
 
-    if (value != -1){
+    if (reading.value != -1){
       if (random(100) < 5){
         Serial.print("Error sending ");
         Serial.println(cursor);
@@ -95,7 +106,7 @@ void sendStoredData(){
         Serial.print("SUCCESS sending ");
         Serial.println(cursor);
         value = -1;
-        EEPROM.put(regAddress + sizeof(timestamp), value);
+        EEPROM.put(regAddress + sizeof(reading.timestamp), value);
         EEPROM.commit();            
       }
     }
@@ -120,26 +131,23 @@ void readEEPROM(){
   
   unsigned short int counter = readEEPROMCounter();
   unsigned short int cursor = 0;
-  unsigned long timestamp;
   int regAddress;
-  short int value;
+  Reading reading;
 
-  int regSize = sizeof(timestamp) + sizeof(value);
-
+  int regSize = sizeof(reading);
 
   Serial.print(counter);
   Serial.println(" registers");
   
   for (cursor = 0; cursor < counter; cursor++){
     regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
-    EEPROM.get(regAddress, timestamp);
-    EEPROM.get(regAddress + sizeof(timestamp), value);
+    EEPROM.get(regAddress, reading);
     Serial.print("Address ");
     Serial.print(regAddress);
     Serial.print(" : ");
-    Serial.print(timestamp);
+    Serial.print(reading.timestamp);
     Serial.print(":");
-    Serial.println(value);    
+    Serial.println(reading.value);    
   }
   
 }
@@ -151,7 +159,6 @@ void resetEEPROM(){
   unsigned short int counter=0;
   EEPROM.put(address, counter);
   EEPROM.commit();  
-  
 }
 
 unsigned short int readEEPROMCounter(){
@@ -161,25 +168,28 @@ unsigned short int readEEPROMCounter(){
 }
 
 void writeReading(unsigned long in_timestamp, short int in_value){
+  
   int address;
   int regAddress;
   unsigned short int counter = readEEPROMCounter();
   unsigned short int cursor;
-  unsigned long timestamp;
-  short int value;
+ 
+  Reading newReading;
+  Reading currentReading;
+  
+  newReading.timestamp = in_timestamp;
+  newReading.value = in_value;
 
-  int regSize = sizeof(timestamp) + sizeof(value);
+  int regSize = sizeof(newReading);
   
   for (cursor = 0; cursor < counter; cursor++){
-    regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
-    EEPROM.get(regAddress, timestamp);
-    EEPROM.get(regAddress + sizeof(timestamp), value);
+    regAddress = sizeof(counter) + cursor*regSize; // +sizeof counter is to skip the counter bytes
+    EEPROM.get(regAddress, currentReading);
 
-    if (value == -1){ // Re-use old register
+    if (currentReading.value == -1){ // Re-use old register
       Serial.print("Reused position ");
       Serial.println(regAddress);
-      EEPROM.put(regAddress, in_timestamp);
-      EEPROM.put(regAddress + sizeof(in_timestamp), in_value);
+      EEPROM.put(regAddress, newReading);
       if (!EEPROM.commit()) {
         Serial.println("Commit failed on re-use");
       }
@@ -188,13 +198,12 @@ void writeReading(unsigned long in_timestamp, short int in_value){
   }
 
   if (cursor == counter){ // new register
-      regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
+      regAddress = sizeof(counter) + cursor*regSize; // +sizeof counter is to skip the counter bytes
 
-      Serial.print("New register at");
+      Serial.print("New register at ");
       Serial.println(regAddress);
 
-      EEPROM.put(regAddress, in_timestamp);
-      EEPROM.put(regAddress + sizeof(in_timestamp), in_value);
+      EEPROM.put(regAddress, newReading);
       counter += 1;
       EEPROM.put(0, counter); 
       if (!EEPROM.commit()) {
@@ -207,7 +216,7 @@ void writeReading(unsigned long in_timestamp, short int in_value){
 void attendTimers(){
     
   for (int i=0; i<NUM_TIMERS; i++){
-    if (millis() - TIMERS[i].lastRun >= TIMERS[i].timer) {
+    if (TIMERS[i].enabled && millis() - TIMERS[i].lastRun >= TIMERS[i].timer) {
       TIMERS[i].function();
       TIMERS[i].lastRun = millis();
     }
@@ -327,6 +336,6 @@ void loop() {
   blink();
   attendTimers();
 
-  //delay(1000);
+  delay(2000);
   
 }
