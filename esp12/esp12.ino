@@ -5,6 +5,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
+#include <SoftwareSerial.h>;
 
 #pragma pack(push, 1)
 
@@ -16,6 +17,8 @@
 void initNtp();
 void FlushStoredData();
 void readEEPROM();
+void readSensor();
+void blinkLed();
 
 const char* ssid = "cnn";
 const char* password = "kkkkkkkk";
@@ -27,6 +30,20 @@ unsigned long tLastConnectionAttempt = 0;
 
 unsigned long tBoot = millis();
 
+// variables for sensor
+ 
+const int US100_RX = 14; // D5
+const int US100_TX = 12; // D12
+
+ 
+SoftwareSerial US100Serial(US100_RX, US100_TX);
+ 
+unsigned int MSByteDist = 0;
+unsigned int LSByteDist = 0;
+unsigned int mmDist = 0;
+int temp = 0;
+
+
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
@@ -36,9 +53,7 @@ unsigned long epochTime = 0;
 long tBlink = millis();
 
 // Timers
-//#define TIMER 0
-//#define LAST_RUN 1
-#define NUM_TIMERS 3
+#define NUM_TIMERS 5
 
 struct
 {
@@ -48,9 +63,11 @@ struct
     void (*function)();
     char* functionName;
 } TIMERS[] = {
-  { true, 15*1000, 0, &FlushStoredData, "FlushStoredData" },
-  { true, 10*1000, 0, &readEEPROM, "readEEPROM" },
+  { true, 300*1000, 0, &FlushStoredData, "FlushStoredData" },
+  { false, 10*1000, 0, &readEEPROM, "readEEPROM" },
   { true, 3600*1000, 0, &initNtp, "initNtp" },
+  { true, 1*1000, 0, &readSensor, "readSensor" },  
+  { true, 1*1000, 0, &blinkLed, "blinkLed" },    
 };
 
 typedef struct
@@ -65,8 +82,48 @@ void setup() {
   Serial.begin(115200); 
   EEPROM.begin(EEPROM_SIZE);
   //resetEEPROM();
+  // sensor
+  US100Serial.begin(9600);
 }
 
+
+void readSensor(){
+   
+    US100Serial.flush();
+    US100Serial.write(0x55); 
+ 
+    delay(100);
+ 
+    if(US100Serial.available() >= 2) 
+    {
+        MSByteDist = US100Serial.read(); 
+        LSByteDist = US100Serial.read();
+        mmDist  = MSByteDist * 256 + LSByteDist; 
+        if((mmDist > 1) && (mmDist < 10000)) 
+        {
+            Serial.print("Distance: ");
+            Serial.print(mmDist, DEC);
+            Serial.println(" mm");
+        }
+    }
+ 
+    US100Serial.flush(); 
+    US100Serial.write(0x50); 
+ 
+    delay(100);
+    if(US100Serial.available() >= 1) 
+    {
+        temp = US100Serial.read();
+        if((temp > 1) && (temp < 130)) // temprature is in range
+        {
+            temp -= 45; // correct 45º offset
+            Serial.print("Temp: ");
+            Serial.print(temp, DEC);
+            Serial.println(" ºC.");
+        }
+    }
+   
+}
 
 void FlushStoredData(){
 
@@ -260,11 +317,8 @@ void connect(){
   
 }
 
-void blink(){
-  digitalWrite(LED, LOW);
-  delay(500);
-  digitalWrite(LED, HIGH);
-  delay(500);
+void blinkLed(){
+  digitalWrite(LED, !digitalRead(LED));
 }
 
 bool send(String what){
@@ -328,12 +382,9 @@ void loop() {
   if (epochTime){
     unsigned long now = epochTime + int(millis()/1000);
     short value = random(1, 1000);
-    writeReading(now, value);
+    //writeReading(now, value);
   }
 
-  blink();
   attendTimers();
-
-  delay(2000);
   
 }
