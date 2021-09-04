@@ -7,8 +7,6 @@
 #include <WiFiClient.h>
 
 #pragma pack(push, 1)
-// without this, the struct Reading would use 8 bytes instead of 6.
-// it would pack the unsigned short in 4 bytes when it's size is 2 bytes.
 
 //Constants
 #define EEPROM_SIZE 4 * 1024 * 1024
@@ -16,7 +14,7 @@
 
 // prototipes
 void initNtp();
-void sendStoredData();
+void FlushStoredData();
 void readEEPROM();
 
 const char* ssid = "cnn";
@@ -50,7 +48,7 @@ struct
     void (*function)();
     char* functionName;
 } TIMERS[] = {
-  { true, 15*1000, 0, &sendStoredData, "sendStoredData" },
+  { true, 15*1000, 0, &FlushStoredData, "FlushStoredData" },
   { true, 10*1000, 0, &readEEPROM, "readEEPROM" },
   { true, 3600*1000, 0, &initNtp, "initNtp" },
 };
@@ -70,13 +68,13 @@ void setup() {
 }
 
 
-void sendStoredData(){
+void FlushStoredData(){
 
   
-  Serial.println("[SEND_STORED_DATA] Sending Stored Data");
+  Serial.println("[FLUSH_STORED_DATA] Sending Stored Data");
 
   if (WiFi.status() != WL_CONNECTED){
-    Serial.println("[SEND_STORED_DATA] I'm not connected to the internet :-/.");
+    Serial.println("[FLUSH_STORED_DATA] I'm not connected to the internet :-/.");
     return;
   }
 
