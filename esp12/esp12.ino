@@ -1,3 +1,10 @@
+
+/* Testest with
+ -  Arduino IDE 1.8.15
+    - Arduino AVR board 1.8.3
+    - ESP8266 2.7.0
+*/
+
 //Libraries
 #include <EEPROM.h>//https://github.com/esp8266/Arduino/blob/master/libraries/EEPROM/EEPROM.h
 #include <NTPClient.h>
@@ -7,22 +14,39 @@
 #include <WiFiClient.h>
 #include <SoftwareSerial.h>;
 
+// This is for each variable to use it's real size when stored
 #pragma pack(push, 1)
+
+// pins mapping
+
+static const uint8_t D0   = 16;
+static const uint8_t D1   = 5;
+static const uint8_t D2   = 4;
+static const uint8_t D3   = 0;
+static const uint8_t D4   = 2;
+static const uint8_t D5   = 14;
+static const uint8_t D6   = 12;
+static const uint8_t D7   = 13;
+static const uint8_t D8   = 15;
+static const uint8_t D9   = 3;
+static const uint8_t D10  = 1;
 
 //Constants
 #define EEPROM_SIZE 4 * 1024 * 1024
-#define LED 2
+#define LED D4
 
 // prototipes
 void initNtp();
 void FlushStoredData();
 void readEEPROM();
-void readSensor();
+void registerNewReading();
 void blinkLed();
+void fakeWrite();
+void connectIfNeeded();
 
 const char* ssid = "cnn";
 const char* password = "kkkkkkkk";
-String baseURL = "http://94.177.253.187:8888/";
+const char* baseURL = "http://94.177.253.187:8888/";
 
 unsigned int address = 0;
 unsigned int tConnect = millis();
@@ -32,10 +56,10 @@ unsigned long tBoot = millis();
 
 // variables for sensor
  
-const int US100_RX = 14; // D5
-const int US100_TX = 12; // D12
+const int US100_RX = D5;
+const int US100_TX = D6;
 
- 
+// To communicate with us-100
 SoftwareSerial US100Serial(US100_RX, US100_TX);
  
 unsigned int MSByteDist = 0;
@@ -48,12 +72,12 @@ int temp = 0;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
-int counter = 0;
+int counter = 0; // number of registers in EEPROM
 unsigned long epochTime = 0;
-long tBlink = millis();
 
 // Timers
-#define NUM_TIMERS 5
+#define NUM_TIMERS 6 // As I can't find an easy way to get the number
+                     // of elements in an array
 
 struct
 {
@@ -63,16 +87,19 @@ struct
     void (*function)();
     char* functionName;
 } TIMERS[] = {
-  { true, 300*1000, 0, &FlushStoredData, "FlushStoredData" },
+  { true, 30*1000, 0, &FlushStoredData, "FlushStoredData" },
   { false, 10*1000, 0, &readEEPROM, "readEEPROM" },
   { true, 3600*1000, 0, &initNtp, "initNtp" },
-  { true, 1*1000, 0, &readSensor, "readSensor" },  
+  { true, 5*1000, 0, &registerNewReading, "registerNewReading" },  
   { true, 1*1000, 0, &blinkLed, "blinkLed" },    
+  //{ false, 10*1000, 0, &fakeWrite, "fakeWrite" },  
+  { true, 5*1000, 0, &connectIfNeeded, "connectIfNeeded" },  
 };
 
 typedef struct
 {
   unsigned long timestamp;
+  byte temperature;
   short int value;
 } Reading;
 
@@ -81,13 +108,52 @@ void setup() {
   pinMode(LED, OUTPUT);
   Serial.begin(115200); 
   EEPROM.begin(EEPROM_SIZE);
-  //resetEEPROM();
+  resetEEPROM();
   // sensor
   US100Serial.begin(9600);
 }
 
 
-void readSensor(){
+void registerNewReading(){
+  byte temperature;
+  short int value;
+  char buffer[100];
+
+  fakeRead(&temperature, &value);
+
+  if (epochTime){
+    unsigned long now = epochTime + int(millis()/1000);
+    sprintf(buffer, "%s/add/%d:%d:%d", baseURL, now, temperature, value);
+
+    // try to send to the server
+    // if fails, store locally for further retrying
+    if (send(buffer)){
+      sprintf(buffer, "Sent %d:%d:%d", now, temperature, value);
+      Serial.println(buffer);
+    }
+    else{
+      writeReading(now, temperature, value);
+      sprintf(buffer, "Locally stored %d:%d:%d", now, temperature, value);
+      Serial.println(buffer);
+    }
+        
+  }
+
+}
+
+
+void fakeRead(byte* temperature, short int *value){
+
+  *temperature = random(10, 50);
+  *value = random(250, 1300);
+
+}
+
+short int mmToLitres(int milimetres){
+  return milimetres;
+}
+
+void readSensor(byte *temperature, short int *value){
    
     US100Serial.flush();
     US100Serial.write(0x55); 
@@ -122,16 +188,22 @@ void readSensor(){
             Serial.println(" ºC.");
         }
     }
+
+    *temperature = (byte) temp;
+    *value = mmToLitres(mmDist);
    
 }
 
 void FlushStoredData(){
 
+  // You have to start server2.py at bitelxux.tk/sensor.agua
+
+  int sent = 0;
   
   Serial.println("[FLUSH_STORED_DATA] Sending Stored Data");
 
   if (WiFi.status() != WL_CONNECTED){
-    Serial.println("[FLUSH_STORED_DATA] I'm not connected to the internet :-/.");
+    Serial.println("[FLUSH_STORED_DATA] Skipping. I'm not connected to the internet :-/.");
     return;
   }
 
@@ -144,28 +216,41 @@ void FlushStoredData(){
   int regSize = sizeof(reading);
 
   char buffer[100];
-  sprintf(buffer, "%d registers", counter);
-  Serial.println(buffer);
+  //sprintf(buffer, "[FLUSH_STORED_DATA] %d registers", counter);
+  //Serial.println(buffer);
   
   for (cursor = 0; cursor < counter; cursor++){
-    regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
-    EEPROM.get(regAddress, reading);
+      regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
+      EEPROM.get(regAddress, reading);
 
-    if (reading.value != -1){
-      if (random(100) < 5){
+      // if value is -1 that register was already sent
+      if (reading.value == -1){
+        continue;
+      }
+
+      sent++;
+      
+      sprintf(buffer, "%s/add/%d:%d:%d", baseURL, reading.timestamp, reading.temperature, reading.value);
+
+      if (!send(buffer)){
         Serial.print("Error sending ");
         Serial.println(cursor);
       }
       else
       {
-        Serial.print("SUCCESS sending ");
+        Serial.print("[FLUSH_STORED_DATA] Success sending record ");
         Serial.println(cursor);
+        // We don't want to write the whole struct to save write cycles
         value = -1;
-        EEPROM.put(regAddress + sizeof(reading.timestamp), value);
+        EEPROM.put(regAddress + sizeof(reading.timestamp) + sizeof(reading.temperature), value);
         EEPROM.commit();            
       }
-    }
-   }  
+  }
+
+  Serial.print("[FLUSH_STORED_DATA] ");
+  Serial.print(sent);
+  Serial.println(" records sent");
+
 }
 
 void initNtp(){
@@ -180,7 +265,10 @@ void initNtp(){
   timeClient.setTimeOffset(7200);  
   timeClient.update();
   epochTime = timeClient.getEpochTime();
+  Serial.print("epochTime set to ");
+  Serial.println(epochTime);
 }
+
 
 void readEEPROM(){
   
@@ -193,7 +281,8 @@ void readEEPROM(){
 
   Serial.print(counter);
   Serial.println(" registers");
-  
+
+  /*
   for (cursor = 0; cursor < counter; cursor++){
     regAddress = 2 + cursor*regSize; // +2 is to skip the counter bytes
     EEPROM.get(regAddress, reading);
@@ -202,11 +291,13 @@ void readEEPROM(){
     Serial.print(" : ");
     Serial.print(reading.timestamp);
     Serial.print(":");
-    Serial.println(reading.value);    
+    Serial.print(reading.temperature);    
+    Serial.print(":");
+    Serial.println(reading.value);        
   }
+  */
   
 }
-
 
 void resetEEPROM(){
   
@@ -214,6 +305,7 @@ void resetEEPROM(){
   unsigned short int counter=0;
   EEPROM.put(address, counter);
   EEPROM.commit();  
+  int a = 1/0;
 }
 
 unsigned short int readEEPROMCounter(){
@@ -222,7 +314,7 @@ unsigned short int readEEPROMCounter(){
   return counter;
 }
 
-void writeReading(unsigned long in_timestamp, short int in_value){
+void writeReading(unsigned long in_timestamp, byte in_temperature, short int in_value){
   
   int address;
   int regAddress;
@@ -233,6 +325,7 @@ void writeReading(unsigned long in_timestamp, short int in_value){
   Reading currentReading;
   
   newReading.timestamp = in_timestamp;
+  newReading.temperature = in_temperature;
   newReading.value = in_value;
 
   int regSize = sizeof(newReading);
@@ -255,8 +348,8 @@ void writeReading(unsigned long in_timestamp, short int in_value){
   if (cursor == counter){ // new register
       regAddress = sizeof(counter) + cursor*regSize; // +sizeof counter is to skip the counter bytes
 
-      Serial.print("New register at ");
-      Serial.println(regAddress);
+      // Serial.print("New register at ");
+      // Serial.println(regAddress);
 
       EEPROM.put(regAddress, newReading);
       counter += 1;
@@ -280,9 +373,10 @@ void attendTimers(){
 }
 
 void connect(){
-  WiFi.begin(ssid, password);
   Serial.println("");
   Serial.println("Connecting");
+
+  WiFi.begin(ssid, password);
 
   tLastConnectionAttempt = millis();
   tConnect =  millis();
@@ -301,6 +395,8 @@ void connect(){
       break;
     }    
   }
+
+  Serial.println("");
 
   if (WiFi.status() == WL_CONNECTED) { 
     initNtp();
@@ -327,16 +423,19 @@ bool send(String what){
   HTTPClient http;
   http.begin(client, what.c_str());
   int httpResponseCode = http.GET();
-  if (httpResponseCode>0){
+
+  if (httpResponseCode == 200){
+        /*
         String payload = http.getString();
         Serial.print("[");
         Serial.print(httpResponseCode);
         Serial.print("] ");
         Serial.println(payload);
+        */
         result = true;
       }
       else {
-        Serial.print("Error code: ");
+        Serial.print("[send] Error code: ");
         Serial.println(httpResponseCode);
         result = false;
       }
@@ -346,25 +445,6 @@ bool send(String what){
       return result;
 }
 
-void storeReading(String what){
-  // todo
-  Serial.print("Fallo enviando ");
-  Serial.println(what);
-}
-
-void read(){
-  // Instead of updating the time everytime, it's initialized and then
-  // we add millis()/1000 to update it.
-  // If epochTime was initialized, try to send
-  // If send fails, store for future attempt
-  // If epochTime hasn't been initializad, reading is discarted
-  unsigned long now = epochTime + int(millis()/1000);
-  String what = (String) now + ":" + (String) counter++;
-  if (epochTime && !send(baseURL + "add/" + what)){
-    storeReading(what);
-  }
-  
-}
 
 void connectIfNeeded(){
   // If millis() < 30000L is the first boot so it will try to connect
@@ -376,15 +456,10 @@ void connectIfNeeded(){
 
 void loop() {
 
-  connectIfNeeded();
-
-  // Fake value written to EEPROM
-  if (epochTime){
-    unsigned long now = epochTime + int(millis()/1000);
-    short value = random(1, 1000);
-    //writeReading(now, value);
-  }
-
   attendTimers();
-  
+  delay(20);
+
+  //digitalWrite(LED, !digitalRead(LED));
+  //delay(100);
+
 }
