@@ -3,6 +3,12 @@
  -  Arduino IDE 1.8.15
     - Arduino AVR board 1.8.3
     - ESP8266 2.7.0
+
+https://arduino.esp8266.com/stable/package_esp8266com_index.json
+board: NodeMCU1.0 (ESP-12E Module)
+
+Install NTPClient from manage libraries
+    
 */
 
 //Libraries
@@ -19,6 +25,7 @@
 
 // pins mapping
 
+/*
 static const uint8_t D0   = 16;
 static const uint8_t D1   = 5;
 static const uint8_t D2   = 4;
@@ -27,9 +34,10 @@ static const uint8_t D4   = 2;
 static const uint8_t D5   = 14;
 static const uint8_t D6   = 12;
 static const uint8_t D7   = 13;
-static const uint8_t D8   = 15;
+static const uint8_t D8   = 15;x``
 static const uint8_t D9   = 3;
 static const uint8_t D10  = 1;
+*/
 
 //Constants
 #define EEPROM_SIZE 4 * 1024 * 1024
@@ -44,8 +52,8 @@ void blinkLed();
 void fakeWrite();
 void connectIfNeeded();
 
-const char* ssid = "cnn";
-const char* password = "kkkkkkkk";
+const char* ssid = "Starlink";
+const char* password = "82111847";
 const char* baseURL = "http://94.177.253.187:8888/";
 
 unsigned int address = 0;
@@ -248,8 +256,13 @@ void FlushStoredData(){
   }
 
   Serial.print("[FLUSH_STORED_DATA] ");
-  Serial.print(sent);
-  Serial.println(" records sent");
+  if (sent){
+     Serial.print(sent);
+     Serial.println(" records sent");
+  }
+  else{
+    Serial.println("Nothing left to send");
+  }
 
 }
 
@@ -449,9 +462,17 @@ bool send(String what){
 void connectIfNeeded(){
   // If millis() < 30000L is the first boot so it will try to connect
   // for further attempts it will try with spaces of 60 seconds
+
   if (WiFi.status() != WL_CONNECTED && (millis() < 30000L || millis() - tLastConnectionAttempt > 60000L)){
+    Serial.println("Trying to connect");
     connect();
   }  
+
+  // also if we don't have time, try to update
+  if (!epochTime){
+    Serial.println("NTP time not updated. Trying to");
+    initNtp();
+  }
 }
 
 void loop() {
