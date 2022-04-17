@@ -1,5 +1,15 @@
+This is the original version for Arduino nano
+The setup includes an OrangePI board running linux
+The arduino reads from the sensor and sends to 
+# the orangePI. The oPI is configured with a cron
+# to send the readings to a server in the cloud
+# that adds them to a MySQL database and has
+# a grafana chart using them.
+
+# Theres a new version for ESP8266, that makes
+# possible to remove the OrangePI from the 
+# equation.
+
 # to burn the arduino nano
 
 amake -u nano328old sensor.agua.ino /dev/ttyUSB0
-
-
